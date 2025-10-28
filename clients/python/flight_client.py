@@ -120,6 +120,7 @@ def run_client(config_path: Path) -> None:
     message_template = client_cfg.get("message_template", "Hello from client")
 
     LOGGER.info("Starting client with %d repetitions", repetitions)
+    last_success_time = time.monotonic()
 
     for index in range(1, repetitions + 1):
         if index > 1:
@@ -132,6 +133,9 @@ def run_client(config_path: Path) -> None:
             if initial_sleep > 0:
                 LOGGER.info("Initial sleep %.3f seconds", initial_sleep)
                 time.sleep(initial_sleep)
+
+        idle_since_last_success = time.monotonic() - last_success_time
+        LOGGER.info("Idle %.3f seconds since last successful response", idle_since_last_success)
 
         current_delay_s = delay_strategy.next_delay()
         headers = _build_headers(delay_strategy, current_delay_s)
@@ -152,17 +156,46 @@ def run_client(config_path: Path) -> None:
                 "host": client_cfg.get("host", "127.0.0.1"),
                 "port": int(client_cfg.get("port", 8815)),
             },
+            "idle_seconds_before_request": idle_since_last_success,
+            "attempt_started_epoch": time.time(),
         }
         payload_bytes = json.dumps(message_payload).encode("utf8")
 
         LOGGER.info("Sending message %d/%d with delay %.3f seconds", index, repetitions, current_delay_s)
         action = flight.Action("echo", payload_bytes)
         call_options = flight.FlightCallOptions(headers=headers)
-        results: Iterable[flight.Result] = client.do_action(action, options=call_options)
+        attempt_started = time.monotonic()
 
-        for result in results:
-            response = json.loads(result.body.to_pybytes().decode("utf8"))
-            LOGGER.info("Received response: %s", json.dumps(response))
+        try:
+            results: Iterable[flight.Result] = client.do_action(action, options=call_options)
+
+            for result in results:
+                response = json.loads(result.body.to_pybytes().decode("utf8"))
+                LOGGER.info("Received response: %s", json.dumps(response))
+
+            last_success_time = time.monotonic()
+            round_trip = last_success_time - attempt_started
+            LOGGER.info(
+                "Call %d/%d completed in %.3f seconds (idle gap %.3f seconds)",
+                index,
+                repetitions,
+                round_trip,
+                idle_since_last_success,
+            )
+        except Exception as exc:  # pragma: no cover - defensive top-level logging
+            failure_time = time.monotonic()
+            idle_before_failure = failure_time - last_success_time
+            in_flight_seconds = failure_time - attempt_started
+            LOGGER.error(
+                "Call %d/%d failed after %.3f seconds idle and %.3f seconds in-flight: %s",
+                index,
+                repetitions,
+                idle_before_failure,
+                in_flight_seconds,
+                exc,
+                exc_info=exc,
+            )
+            raise
 
     LOGGER.info("Client run complete")
 

@@ -18,6 +18,7 @@ fields to tailor the pacing for your environment.
 | `tcp-keepalive-1000s` | Enables 1,000 second TCP keep-alives on both client and server. |
 | `grpc-keepalive-60s` | Enables 60 second gRPC keep-alives on both client and server. |
 | `tcp-keepalive-60s` | Enables 60 second TCP keep-alives on both client and server. |
+| `idle-reset-probe` | Leaves the connection idle without keep-alives to surface mid-path resets. |
 
 ## Running a profile
 
@@ -76,6 +77,21 @@ kill $SERVER_PID
 python -m server.flight_server --config profiles/tcp-keepalive-60s/server.yaml &
 SERVER_PID=$!
 python -m clients.python.flight_client --config profiles/tcp-keepalive-60s/client.yaml
+kill $SERVER_PID
+```
+
+### Idle reset probe for appliance discovery
+
+This scenario intentionally leaves the connection idle for increasingly long
+periods without keep-alives so that load balancers or firewalls that issue RSTs
+can be identified. Monitor the client log for messages like
+`failed after <seconds> seconds idle` to capture the time of the disconnect and
+correlate it with server- or network-side logs.
+
+```bash
+python -m server.flight_server --config profiles/idle-reset-probe/server.yaml &
+SERVER_PID=$!
+python -m clients.python.flight_client --config profiles/idle-reset-probe/client.yaml
 kill $SERVER_PID
 ```
 
