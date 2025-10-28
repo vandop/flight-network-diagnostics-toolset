@@ -1,0 +1,31 @@
+client:
+  host: "127.0.0.1"
+  port: 8815
+  log_file: "clients/python/logs/flight_client.log"
+  log_level: "INFO"
+  message_template: "Hello from Python Flight client"
+  repetitions: 5
+
+  delay:
+    strategy: linear
+    initial_ms: 100
+    linear_increment_ms: 50
+    multiplier: 1.5
+    exponential_base: 2.0
+    max_ms: 2000
+
+  interval:
+    strategy: linear
+    initial_ms: 500
+    linear_increment_ms: 250
+    multiplier: 2.0
+    exponential_base: 2.0
+    max_ms: 5000
+
+  grpc_options:
+    - key: "grpc.keepalive_time_ms"
+      value: "30000"
+    - key: "grpc.keepalive_timeout_ms"
+      value: "10000"
+    - key: "grpc.http2.max_pings_without_data"
+      value: "0"
