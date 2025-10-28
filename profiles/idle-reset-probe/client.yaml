@@ -5,6 +5,8 @@ client:
   log_level: "INFO"
   message_template: "Idle reset probe - trace network resets"
   repetitions: 12
+  continue_on_failure: true
+  reconnect_on_failure: true
 
   delay:
     strategy: fixed

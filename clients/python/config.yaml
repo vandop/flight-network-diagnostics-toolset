@@ -5,6 +5,8 @@ client:
   log_level: "INFO"
   message_template: "Hello from Python Flight client"
   repetitions: 5
+  continue_on_failure: false
+  reconnect_on_failure: false
 
   delay:
     strategy: linear

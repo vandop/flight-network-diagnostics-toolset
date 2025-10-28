@@ -82,11 +82,15 @@ kill $SERVER_PID
 
 ### Idle reset probe for appliance discovery
 
-This scenario intentionally leaves the connection idle for increasingly long
-periods without keep-alives so that load balancers or firewalls that issue RSTs
-can be identified. Monitor the client log for messages like
-`failed after <seconds> seconds idle` to capture the time of the disconnect and
-correlate it with server- or network-side logs.
+This scenario establishes a Flight channel, exchanges an initial message, and
+then leaves the connection idle for increasingly long periods without
+keep-alives. Every time the idle window elapses the client sends another RPC on
+the same channel so that any mid-path device that injected an RST during the
+quiet period is surfaced immediately. When a reset is detected the client logs
+both the idle duration before the failure and the time spent waiting for the
+response, reconnects, and keeps iterating so you can capture multiple RSTs in a
+single run. Correlate the log lines with upstream firewall or proxy records to
+pinpoint which hop is reclaiming the connection.
 
 ```bash
 python -m server.flight_server --config profiles/idle-reset-probe/server.yaml &

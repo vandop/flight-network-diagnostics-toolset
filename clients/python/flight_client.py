@@ -6,6 +6,7 @@ import json
 import logging
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -111,28 +112,27 @@ def run_client(config_path: Path) -> None:
 
     apply_tcp_settings(client_cfg.get("tcp_settings", {}), logger=LOGGER)
 
-    client = flight.FlightClient(location, generic_options=generic_options)
+    def build_client() -> flight.FlightClient:
+        return flight.FlightClient(location, generic_options=generic_options)
+
+    client = build_client()
 
     delay_strategy = _build_delay_strategy(client_cfg)
     interval_strategy = _build_interval_strategy(client_cfg)
 
     repetitions = int(client_cfg.get("repetitions", 1))
     message_template = client_cfg.get("message_template", "Hello from client")
+    continue_on_failure = bool(client_cfg.get("continue_on_failure", False))
+    reconnect_on_failure = bool(client_cfg.get("reconnect_on_failure", False))
 
     LOGGER.info("Starting client with %d repetitions", repetitions)
     last_success_time = time.monotonic()
+    next_sleep_seconds = 0.0
 
     for index in range(1, repetitions + 1):
-        if index > 1:
-            sleep_seconds = interval_strategy.next_delay()
-            LOGGER.info("Sleeping %.3f seconds before next message", sleep_seconds)
-            time.sleep(sleep_seconds)
-        else:
-            # Use the initial interval immediately.
-            initial_sleep = interval_strategy.next_delay()
-            if initial_sleep > 0:
-                LOGGER.info("Initial sleep %.3f seconds", initial_sleep)
-                time.sleep(initial_sleep)
+        if next_sleep_seconds > 0:
+            LOGGER.info("Sleeping %.3f seconds before next message", next_sleep_seconds)
+            time.sleep(next_sleep_seconds)
 
         idle_since_last_success = time.monotonic() - last_success_time
         LOGGER.info("Idle %.3f seconds since last successful response", idle_since_last_success)
@@ -182,6 +182,7 @@ def run_client(config_path: Path) -> None:
                 round_trip,
                 idle_since_last_success,
             )
+            next_sleep_seconds = interval_strategy.next_delay() if index < repetitions else 0.0
         except Exception as exc:  # pragma: no cover - defensive top-level logging
             failure_time = time.monotonic()
             idle_before_failure = failure_time - last_success_time
@@ -195,9 +196,21 @@ def run_client(config_path: Path) -> None:
                 exc,
                 exc_info=exc,
             )
+            next_sleep_seconds = interval_strategy.next_delay() if index < repetitions else 0.0
+            if continue_on_failure and index < repetitions:
+                if reconnect_on_failure:
+                    LOGGER.info("Re-establishing Flight channel after failure")
+                    with suppress(Exception):
+                        client.close()
+                    client = build_client()
+                last_success_time = failure_time
+                LOGGER.info("Continuing to next iteration after failure (reconnect=%s)", reconnect_on_failure)
+                continue
             raise
 
     LOGGER.info("Client run complete")
+    with suppress(Exception):
+        client.close()
 
 
 def main(argv: Optional[List[str]] = None) -> int:
