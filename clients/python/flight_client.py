@@ -18,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from shared.delay import DelayConfigurationError, DelayStrategy  # noqa: E402  pylint: disable=wrong-import-position
+from shared.network import apply_tcp_settings  # noqa: E402  pylint: disable=wrong-import-position
 
 LOGGER = logging.getLogger("flight_client")
 
@@ -107,6 +108,8 @@ def run_client(config_path: Path) -> None:
 
     location = flight.Location.for_grpc_tcp(client_cfg.get("host", "127.0.0.1"), int(client_cfg.get("port", 8815)))
     generic_options = _build_generic_options(client_cfg.get("grpc_options", []))
+
+    apply_tcp_settings(client_cfg.get("tcp_settings", {}), logger=LOGGER)
 
     client = flight.FlightClient(location, generic_options=generic_options)
 

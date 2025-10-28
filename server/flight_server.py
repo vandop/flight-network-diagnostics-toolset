@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import signal
 import sys
 import threading
@@ -17,6 +16,7 @@ import pyarrow.flight as flight
 import yaml
 
 from shared.delay import DelayConfigurationError, DelayStrategy
+from shared.network import apply_tcp_settings
 
 
 class HeadersMiddleware(flight.ServerMiddleware):
@@ -180,29 +180,6 @@ def _build_generic_options(options: List[Dict[str, str]]) -> List[Tuple[str, str
     return generic_options
 
 
-def _apply_tcp_settings(tcp_settings: Dict[str, object]) -> None:
-    if not tcp_settings:
-        return
-    try:
-        import socket
-
-        if not hasattr(socket, "SOL_SOCKET"):
-            LOGGER.warning("TCP settings not supported on this platform")
-            return
-
-        # pyarrow.flight listens lazily; configure defaults via environment variables where possible.
-        if tcp_settings.get("tcp_keepalive"):
-            os.environ.setdefault("PYARROW_TCP_KEEPALIVE", "1")
-        if tcp_settings.get("tcp_keepidle") is not None:
-            os.environ.setdefault("PYARROW_TCP_KEEPIDLE", str(tcp_settings["tcp_keepidle"]))
-        if tcp_settings.get("tcp_keepintvl") is not None:
-            os.environ.setdefault("PYARROW_TCP_KEEPINTVL", str(tcp_settings["tcp_keepintvl"]))
-        if tcp_settings.get("tcp_keepcnt") is not None:
-            os.environ.setdefault("PYARROW_TCP_KEEPCNT", str(tcp_settings["tcp_keepcnt"]))
-    except Exception as exc:  # pragma: no cover - platform specific fallback
-        LOGGER.warning("Failed to apply TCP settings: %s", exc)
-
-
 def run_server(config_path: Path) -> None:
     config = _load_config(config_path)
     server_cfg = config["server"]
@@ -219,7 +196,7 @@ def run_server(config_path: Path) -> None:
     log_file = Path(server_cfg.get("log_file", "server.log"))
     _configure_logging(log_file, server_cfg.get("log_level", "INFO"))
 
-    _apply_tcp_settings(server_cfg.get("tcp_settings", {}))
+    apply_tcp_settings(server_cfg.get("tcp_settings", {}), logger=LOGGER)
 
     location = flight.Location.for_grpc_tcp(server_cfg.get("host", "0.0.0.0"), int(server_cfg.get("port", 8815)))
     generic_options = _build_generic_options(server_cfg.get("grpc_options", []))

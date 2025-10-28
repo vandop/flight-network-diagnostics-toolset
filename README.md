@@ -11,6 +11,8 @@ options so you can observe how proxies and network appliances behave over time.
 - `clients/python/` – Python Flight client exercising the server.
 - `shared/` – Utilities shared between the server and clients.
 - `tests/` – Integration test that launches the server and client together.
+- `profiles/` – Ready-to-run client/server configuration pairs covering common
+  keep-alive scenarios.
 
 ## Integration test
 
