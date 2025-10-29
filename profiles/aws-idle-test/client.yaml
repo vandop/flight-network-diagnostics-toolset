@@ -1,0 +1,23 @@
+client:
+  host: "REPLACE_WITH_EC2_IP"  # Replace with your EC2 instance IP
+  port: 8815
+  log_file: "clients/python/logs/aws_idle_test_client.log"
+  log_level: "INFO"
+  message_template: "AWS idle timeout test - local to EC2"
+  repetitions: 20
+  continue_on_failure: true
+  reconnect_on_failure: true
+
+  delay:
+    strategy: fixed
+    initial_ms: 0
+
+  interval:
+    strategy: multiplier
+    initial_ms: 60000      # Start with 1 minute idle
+    multiplier: 1.2        # Gradually increase
+    max_ms: 1800000        # Max 30 minutes idle
+
+  grpc_options: []         # No gRPC keepalives
+  tcp_settings:
+    tcp_keepalive: false   # No TCP keepalives to test pure idle timeout
