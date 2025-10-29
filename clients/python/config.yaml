@@ -5,6 +5,8 @@ client:
   log_level: "INFO"
   message_template: "Hello from Python Flight client"
   repetitions: 5
+  continue_on_failure: false
+  reconnect_on_failure: false
 
   delay:
     strategy: linear
@@ -29,3 +31,8 @@ client:
       value: "10000"
     - key: "grpc.http2.max_pings_without_data"
       value: "0"
+  tcp_settings:
+    tcp_keepalive: true
+    tcp_keepidle: 60
+    tcp_keepintvl: 10
+    tcp_keepcnt: 5

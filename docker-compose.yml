@@ -1,0 +1,102 @@
+version: "3.9"
+
+services:
+  flight-server:
+    build:
+      context: .
+    command:
+      - bash
+      - -lc
+      - |
+        python - <<'PY'
+        import os, pathlib, yaml
+        source = pathlib.Path(os.environ.get('SERVER_CONFIG', 'server/config.yaml'))
+        destination = pathlib.Path('/tmp/effective_server_config.yaml')
+        data = yaml.safe_load(source.read_text(encoding='utf8')) or {}
+        server = data.setdefault('server', {})
+        server['host'] = os.environ.get('SERVER_HOST', server.get('host', '0.0.0.0'))
+        server['port'] = int(os.environ.get('SERVER_PORT', server.get('port', 8815)))
+        destination.write_text(yaml.safe_dump(data), encoding='utf8')
+        PY
+        python server/flight_server.py --config /tmp/effective_server_config.yaml
+    environment:
+      PYTHONUNBUFFERED: "1"
+      SERVER_HOST: "0.0.0.0"
+      SERVER_PORT: "8815"
+      SERVER_CONFIG: "server/config.yaml"
+      SERVER_HEALTH_HOST: "127.0.0.1"
+    volumes:
+      - .:/app
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import os,socket; host=os.environ.get(\"SERVER_HEALTH_HOST\",\"127.0.0.1\"); port=int(os.environ.get(\"SERVER_PORT\",8815)); s=socket.create_connection((host,port), timeout=2); s.close()'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  network-proxy:
+    build:
+      context: .
+    command:
+      - python
+      - -m
+      - proxy.idle_proxy
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PROXY_LISTEN_HOST: "0.0.0.0"
+      PROXY_LISTEN_PORT: "8815"
+      PROXY_BACKEND_HOST: "flight-server"
+      PROXY_BACKEND_PORT: "8815"
+      PROXY_IDLE_TIMEOUT_SECONDS: "180"
+      PROXY_HTTP_PING_PATH: "/ping"
+    depends_on:
+      flight-server:
+        condition: service_healthy
+    ports:
+      - "8815:8815"
+    volumes:
+      - .:/app
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python - <<'PY'
+          import os, http.client
+          conn = http.client.HTTPConnection(os.environ.get('PROXY_HEALTH_HOST', '127.0.0.1'), int(os.environ.get('PROXY_LISTEN_PORT', '8815')), timeout=2)
+          conn.request('GET', os.environ.get('PROXY_HTTP_PING_PATH', '/ping'))
+          resp = conn.getresponse()
+          body = resp.read()
+          assert resp.status == 200, f"unexpected status {resp.status}"
+          assert body, 'empty response'
+          PY
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  flight-client:
+    build:
+      context: .
+    command:
+      - bash
+      - -lc
+      - |
+        python - <<'PY'
+        import os, pathlib, yaml
+        source = pathlib.Path(os.environ.get('CLIENT_CONFIG', 'clients/python/config.yaml'))
+        destination = pathlib.Path('/tmp/effective_client_config.yaml')
+        data = yaml.safe_load(source.read_text(encoding='utf8')) or {}
+        client = data.setdefault('client', {})
+        client['host'] = os.environ.get('SERVER_HOST', client.get('host', 'network-proxy'))
+        client['port'] = int(os.environ.get('SERVER_PORT', client.get('port', 8815)))
+        destination.write_text(yaml.safe_dump(data), encoding='utf8')
+        PY
+        python clients/python/flight_client.py --config /tmp/effective_client_config.yaml
+    environment:
+      PYTHONUNBUFFERED: "1"
+      CLIENT_CONFIG: "clients/python/config.yaml"
+      SERVER_HOST: "network-proxy"
+      SERVER_PORT: "8815"
+    depends_on:
+      network-proxy:
+        condition: service_healthy
+    volumes:
+      - .:/app

@@ -1,0 +1,23 @@
+client:
+  host: "127.0.0.1"
+  port: 8815
+  log_file: "clients/python/logs/idle_reset_probe_client.log"
+  log_level: "INFO"
+  message_template: "Idle reset probe - trace network resets"
+  repetitions: 12
+  continue_on_failure: true
+  reconnect_on_failure: true
+
+  delay:
+    strategy: fixed
+    initial_ms: 0
+
+  interval:
+    strategy: multiplier
+    initial_ms: 180000
+    multiplier: 1.5
+    max_ms: 900000
+
+  grpc_options: []
+  tcp_settings:
+    tcp_keepalive: false
