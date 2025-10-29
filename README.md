@@ -40,7 +40,12 @@ docker compose up --build
 
 The compose file launches the Flight server and client in separate containers,
 rewriting their configuration files at runtime so they talk to each other over
-the internal Docker network. Logs from both services stream to the console.
+an intermediate `network-proxy` service. The proxy emulates a cloud appliance
+that reaps idle TCP connections: it observes both sides of the conversation,
+injects a TCP reset when no application data has crossed the channel for the
+configured timeout, and short-circuits HTTP `GET /ping` requests with a direct
+`200 OK` reply so you can verify its health without reaching the Flight server.
+Logs from all services stream to the console.
 
 To exercise one of the documented profiles, point the services at the matching
 configuration pair using environment variables. For example, to run the
@@ -54,3 +59,19 @@ docker compose up --build
 
 You can swap in any of the other profile directories the same way. When the
 client finishes its configured repetitions, stop the stack with `Ctrl+C`.
+
+To tune the proxy’s behaviour supply additional environment variables when you
+launch the stack. For example, to trigger a reset after sixty seconds of
+silence, while exposing the proxy’s HTTP ping endpoint locally:
+
+```bash
+PROXY_IDLE_TIMEOUT_SECONDS=60 \
+SERVER_CONFIG=profiles/idle-reset-probe/server.yaml \
+CLIENT_CONFIG=profiles/idle-reset-probe/client.yaml \
+docker compose up --build
+```
+
+The proxy listens on `http://localhost:8815/ping` by default and forwards all
+other TCP payloads to the Flight server untouched, allowing you to observe how
+different keep-alive strategies interact with a network device that enforces
+idle timeouts.
