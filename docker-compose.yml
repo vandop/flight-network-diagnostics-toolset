@@ -1,0 +1,65 @@
+version: "3.9"
+
+services:
+  flight-server:
+    build:
+      context: .
+    command:
+      - bash
+      - -lc
+      - |
+        python - <<'PY'
+        import os, pathlib, yaml
+        source = pathlib.Path(os.environ.get('SERVER_CONFIG', 'server/config.yaml'))
+        destination = pathlib.Path('/tmp/effective_server_config.yaml')
+        data = yaml.safe_load(source.read_text(encoding='utf8')) or {}
+        server = data.setdefault('server', {})
+        server['host'] = os.environ.get('SERVER_HOST', server.get('host', '0.0.0.0'))
+        server['port'] = int(os.environ.get('SERVER_PORT', server.get('port', 8815)))
+        destination.write_text(yaml.safe_dump(data), encoding='utf8')
+        PY
+        python server/flight_server.py --config /tmp/effective_server_config.yaml
+    ports:
+      - "8815:8815"
+    environment:
+      PYTHONUNBUFFERED: "1"
+      SERVER_HOST: "0.0.0.0"
+      SERVER_PORT: "8815"
+      SERVER_CONFIG: "server/config.yaml"
+      SERVER_HEALTH_HOST: "127.0.0.1"
+    volumes:
+      - .:/app
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import os,socket; host=os.environ.get(\"SERVER_HEALTH_HOST\",\"127.0.0.1\"); port=int(os.environ.get(\"SERVER_PORT\",8815)); s=socket.create_connection((host,port), timeout=2); s.close()'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  flight-client:
+    build:
+      context: .
+    command:
+      - bash
+      - -lc
+      - |
+        python - <<'PY'
+        import os, pathlib, yaml
+        source = pathlib.Path(os.environ.get('CLIENT_CONFIG', 'clients/python/config.yaml'))
+        destination = pathlib.Path('/tmp/effective_client_config.yaml')
+        data = yaml.safe_load(source.read_text(encoding='utf8')) or {}
+        client = data.setdefault('client', {})
+        client['host'] = os.environ.get('SERVER_HOST', client.get('host', 'flight-server'))
+        client['port'] = int(os.environ.get('SERVER_PORT', client.get('port', 8815)))
+        destination.write_text(yaml.safe_dump(data), encoding='utf8')
+        PY
+        python clients/python/flight_client.py --config /tmp/effective_client_config.yaml
+    environment:
+      PYTHONUNBUFFERED: "1"
+      CLIENT_CONFIG: "clients/python/config.yaml"
+      SERVER_HOST: "flight-server"
+      SERVER_PORT: "8815"
+    depends_on:
+      flight-server:
+        condition: service_healthy
+    volumes:
+      - .:/app
