@@ -49,8 +49,7 @@ services:
       PROXY_IDLE_TIMEOUT_SECONDS: "180"
       PROXY_HTTP_PING_PATH: "/ping"
     depends_on:
-      flight-server:
-        condition: service_healthy
+      - flight-server
     ports:
       - "8815:8815"
     volumes:
@@ -96,7 +95,6 @@ services:
       SERVER_HOST: "network-proxy"
       SERVER_PORT: "8815"
     depends_on:
-      network-proxy:
-        condition: service_healthy
+      - network-proxy
     volumes:
       - .:/app
